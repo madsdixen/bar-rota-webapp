@@ -14,12 +14,12 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
   const [m2, setM2] = useState(member2)
   const [isEditing, setIsEditing] = useState(false)
 
-  // Har slottet (props) data?
+  // Har slottet gemt data (fra props)?
   const hasSavedData = Boolean(member1?.trim() || member2?.trim())
-  // Skal Save vises? (kun i edit-mode og når der er noget at gemme)
+  // Må vi vise Gem-knap? (kun i edit-mode og hvis mindst ét felt er udfyldt)
   const canSave = isEditing && Boolean(m1?.trim() || m2?.trim())
 
-  // Sync fra props når vi IKKE redigerer (så props kan låse felterne)
+  // Sync fra props kun når vi IKKE redigerer
   useEffect(() => {
     if (!isEditing) {
       setM1(member1)
@@ -28,7 +28,7 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
   }, [member1, member2, isEditing])
 
   const beginEdit = () => {
-    // start fra seneste gemte værdier
+    // Start med seneste gemte værdier
     setM1(member1)
     setM2(member2)
     setIsEditing(true)
@@ -43,8 +43,8 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
   const handleClear = () => {
     setM1('')
     setM2('')
-    onClear()
-    setIsEditing(false) // afslut highlight efter ryd
+    onClear()          // App.tsx -> saveSlot(...'', '') => sletter i DB
+    setIsEditing(false)
   }
 
   const readOnly = !isEditing
@@ -67,8 +67,8 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
         </span>
 
         <div className="flex items-center gap-2">
-          {/* Redigér: vises når der er gemte data og ikke i edit-mode */}
-          {!isEditing && hasSavedData && (
+          {/* Redigér: kræves nu for at kunne taste */}
+          {!isEditing && (
             <button
               onClick={beginEdit}
               className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
@@ -77,7 +77,7 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
             </button>
           )}
 
-          {/* Ryd: vises når der er gemte data (altid) eller i edit-mode */}
+          {/* Ryd: vises hvis der enten er gemt data eller vi er i redigering */}
           {(hasSavedData || isEditing) && (
             <button
               onClick={handleClear}
@@ -88,7 +88,7 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
             </button>
           )}
 
-          {/* Gem: kun i edit-mode og hvis der er noget at gemme */}
+          {/* Gem: kun i edit-mode og når der er noget at gemme */}
           {canSave && (
             <button
               onClick={handleSave}
@@ -114,7 +114,6 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
             value={m1}
             onChange={(e) => setM1(e.target.value)}
             readOnly={readOnly}
-            onFocus={() => { if (!isEditing) beginEdit() }}
           />
         </div>
 
@@ -132,7 +131,6 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
             value={m2}
             onChange={(e) => setM2(e.target.value)}
             readOnly={readOnly}
-            onFocus={() => { if (!isEditing) beginEdit() }}
           />
         </div>
       </div>
