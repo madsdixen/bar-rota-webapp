@@ -10,13 +10,16 @@ type Props = {
 }
 
 export default function SlotCard({ label, member1, member2, onSave, onClear, saving }: Props) {
-  // Lokale felter
   const [m1, setM1] = useState(member1)
   const [m2, setM2] = useState(member2)
-  // Redigerings-tilstand
   const [isEditing, setIsEditing] = useState(false)
 
-  // Sync fra props når vi IKKE er i gang med at redigere
+  // Har slottet (props) data?
+  const hasSavedData = Boolean(member1?.trim() || member2?.trim())
+  // Skal Save vises? (kun i edit-mode og når der er noget at gemme)
+  const canSave = isEditing && Boolean(m1?.trim() || m2?.trim())
+
+  // Sync fra props når vi IKKE redigerer (så props kan låse felterne)
   useEffect(() => {
     if (!isEditing) {
       setM1(member1)
@@ -24,22 +27,38 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
     }
   }, [member1, member2, isEditing])
 
-  // Klik i et felt starter redigering (og fremhæver kortet)
-  const beginEdit = () => setIsEditing(true)
-
-  const handleSave = () => {
-    onSave(m1.trim(), m2.trim())
-    setIsEditing(false) // afslut fremhævning efter gem
+  const beginEdit = () => {
+    // start fra seneste gemte værdier
+    setM1(member1)
+    setM2(member2)
+    setIsEditing(true)
   }
 
-  const isEmpty = !m1 && !m2
+  const handleSave = () => {
+    if (!canSave) return
+    onSave(m1.trim(), m2.trim())
+    setIsEditing(false) // afslut highlight efter gem
+  }
+
+  const handleClear = () => {
+    setM1('')
+    setM2('')
+    onClear()
+    setIsEditing(false) // afslut highlight efter ryd
+  }
+
+  const readOnly = !isEditing
+  const savedStyle =
+    hasSavedData && !isEditing
+      ? 'bg-green-50 border-green-300 ring-1 ring-green-200'
+      : 'bg-white/90 border-slate-200 ring-1 ring-transparent hover:ring-sky-100'
 
   return (
     <div
       className={[
-        "rounded-2xl border bg-white/90 p-4 shadow-sm transition",
-        "border-slate-200 ring-1 ring-transparent hover:shadow-md",
-        isEditing ? "ring-2 ring-sky-400/60 shadow-md" : "hover:ring-sky-100"
+        'rounded-2xl p-4 shadow-sm transition',
+        savedStyle,
+        isEditing ? 'ring-2 ring-sky-400/60 shadow-md' : ''
       ].join(' ')}
     >
       <div className="mb-4 flex items-center justify-between">
@@ -48,22 +67,29 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
         </span>
 
         <div className="flex items-center gap-2">
-          {/* Ryd er altid mulig (deaktiveret hvis tomt) */}
-          <button
-            onClick={() => {
-              setM1('')
-              setM2('')
-              onClear()
-              setIsEditing(false) // sikre at highlight forsvinder efter ryd
-            }}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-            disabled={isEmpty || saving}
-          >
-            Ryd
-          </button>
+          {/* Redigér: vises når der er gemte data og ikke i edit-mode */}
+          {!isEditing && hasSavedData && (
+            <button
+              onClick={beginEdit}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+            >
+              Redigér
+            </button>
+          )}
 
-          {/* Gem vises kun i redigering */}
-          {isEditing && (
+          {/* Ryd: vises når der er gemte data (altid) eller i edit-mode */}
+          {(hasSavedData || isEditing) && (
+            <button
+              onClick={handleClear}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              disabled={saving}
+            >
+              Ryd
+            </button>
+          )}
+
+          {/* Gem: kun i edit-mode og hvis der er noget at gemme */}
+          {canSave && (
             <button
               onClick={handleSave}
               disabled={saving}
@@ -80,15 +106,15 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
           <label className="text-xs font-medium text-slate-600">Bartender 1</label>
           <input
             className={[
-              "w-full rounded-xl border px-3 py-2 outline-none",
-              "border-slate-300 bg-white focus:ring-2",
-              isEditing ? "focus:ring-sky-400" : "focus:ring-slate-200"
+              'w-full rounded-xl border px-3 py-2 outline-none',
+              'border-slate-300 bg-white',
+              isEditing ? 'focus:ring-2 focus:ring-sky-400' : 'opacity-90'
             ].join(' ')}
             placeholder="Navn på Bartender 1"
             value={m1}
-            onFocus={beginEdit}          // klik/fokus => redigering
             onChange={(e) => setM1(e.target.value)}
-            readOnly={!isEditing}        // tastning kun i edit-mode
+            readOnly={readOnly}
+            onFocus={() => { if (!isEditing) beginEdit() }}
           />
         </div>
 
@@ -98,15 +124,15 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
           <label className="text-xs font-medium text-slate-600">Bartender 2</label>
           <input
             className={[
-              "w-full rounded-xl border px-3 py-2 outline-none",
-              "border-slate-300 bg-white focus:ring-2",
-              isEditing ? "focus:ring-sky-400" : "focus:ring-slate-200"
+              'w-full rounded-xl border px-3 py-2 outline-none',
+              'border-slate-300 bg-white',
+              isEditing ? 'focus:ring-2 focus:ring-sky-400' : 'opacity-90'
             ].join(' ')}
             placeholder="Navn på Bartender 2"
             value={m2}
-            onFocus={beginEdit}
             onChange={(e) => setM2(e.target.value)}
-            readOnly={!isEditing}
+            readOnly={readOnly}
+            onFocus={() => { if (!isEditing) beginEdit() }}
           />
         </div>
       </div>
