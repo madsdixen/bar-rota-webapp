@@ -5,5 +5,5 @@ import react from '@vitejs/plugin-react'
 // Example: export default defineConfig({ plugins: [react()], base: '/bar-rota-webapp/' })
 export default defineConfig({
   plugins: [react()],
-  // base: '/YOUR_REPO_NAME/'
+  base: '/bar-rota-webapp/'
 })
