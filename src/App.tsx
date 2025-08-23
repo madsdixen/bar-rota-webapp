@@ -17,6 +17,7 @@ export default function App() {
   // Remove global saving, use per-slot saving state
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
 
   const bySlot = useMemo(() => {
     const map: Record<number, Team | undefined> = {}
@@ -55,10 +56,10 @@ export default function App() {
     // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
     if (!member1.trim() && !member2.trim()) {
       if (existing) {
-        // Optimistically update teams before await
         setTeams(prev => prev.filter(t => t.id !== existing.id))
         const { error } = await supabase.from('teams').delete().eq('id', existing.id)
         if (error) setError(error.message)
+        else setLastSavedAt(new Date().toLocaleTimeString())
       }
       setSlotSaving(slot_index, false)
       return
@@ -66,7 +67,6 @@ export default function App() {
 
     // Ellers gem/indsæt normalt
     if (existing) {
-      // Optimistically update teams before await
       setTeams(prev => prev.map(t =>
         t.id === existing.id ? { ...t, member1, member2 } : t
       ))
@@ -77,9 +77,9 @@ export default function App() {
         .select()
         .single()
       if (error) setError(error.message)
+      else setLastSavedAt(new Date().toLocaleTimeString())
       if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
     } else {
-      // Optimistically add to teams before await (with a temporary id)
       const tempId = 'temp-' + slot_index + '-' + Math.random()
       setTeams(prev => [...prev, { id: tempId, slot_index, member1, member2 } as any])
       const { data, error } = await supabase
@@ -87,15 +87,17 @@ export default function App() {
         .insert({ member1, member2, slot_index })
         .select()
         .single()
-      if (error) setError(error.message)
-      if (data) {
-        setTeams(prev => [
-          ...prev.filter(t => !(t.id === tempId)),
-          data as any
-        ])
-      } else {
-        // Remove temp if error
+      if (error) {
+        setError(error.message)
         setTeams(prev => prev.filter(t => t.id !== tempId))
+      } else {
+        setLastSavedAt(new Date().toLocaleTimeString())
+        if (data) {
+          setTeams(prev => [
+            ...prev.filter(t => !(t.id === tempId)),
+            data as any
+          ])
+        }
       }
     }
 
@@ -114,7 +116,7 @@ export default function App() {
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-xl bg-sky-600/90"></div>
-            <h1 className="text-lg font-semibold text-slate-800">Barvagt Planlægger</h1>
+            <h1 className="text-lg font-semibold text-slate-800">Barvagt Planlægger til Mejlgade Kollektivet</h1>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <button
@@ -131,9 +133,9 @@ export default function App() {
       {/* Content */}
       <main className="mx-auto max-w-2xl px-4 py-6">
         <p className="mb-5 text-slate-600">
-          Udfyld <strong>Bartender 1</strong> og <strong>Bartender 2</strong> for hvert timeslot fra
-          <strong> 16:00</strong> til <strong>03:00</strong>. Ændringer gemmes automatisk.
-        </p>
+  Her kan du planlægge barvagter. Hvert timeslot dækkes af to bartendere.  
+  Klik "Redigér" for at indsætte navne, og husk at trykke "Gem".  
+</p>
 
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -162,9 +164,14 @@ export default function App() {
           </div>
         )}
 
-        <div className="mt-10 text-center text-xs text-slate-500">
-          Hostet gratis på GitHub Pages • Data i Supabase (gratis plan)
-        </div>
+        <footer className="mt-10 border-t border-slate-200/80 bg-white/70 backdrop-blur">
+          <div className="mx-auto max-w-2xl px-4 py-4 text-xs text-slate-600 flex items-center justify-between">
+            <span>
+              {savingSlots.size ? 'Gemmer ændringer…' : (lastSavedAt ? `Sidst gemt kl. ${lastSavedAt}` : 'Klar')}
+            </span>
+            <span className="hidden sm:inline">Supabase (gratis) · GitHub Pages</span>
+          </div>
+        </footer>
       </main>
     </div>
   )
