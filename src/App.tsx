@@ -1,23 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { supabase } from './lib/supabaseClient'
 import type { Team } from './types'
-import TeamCard from './components/TeamCard'
+import SlotCard from './components/SlotCard'
 
-function SortableItem(props: { id: string; children: (dragHandleProps: any) => React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: props.id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-  return (
-    <div ref={setNodeRef} style={style}>
-      {props.children({ ...attributes, ...listeners })}
-    </div>
-  )
+const SLOT_COUNT = 12 // 16:00 .. 03:00
+
+function slotLabel(idx: number) {
+  const hour = (16 + idx) % 24
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${pad(hour)}:00 – ${pad((hour + 1) % 24)}:00`
 }
 
 export default function App() {
@@ -26,136 +17,82 @@ export default function App() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const bySlot = useMemo(() => {
+    const map: Record<number, Team | undefined> = {}
+    for (const t of teams) map[t.slot_index] = t
+    return map
+  }, [teams])
 
   async function load() {
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
-      .from('teams')
-      .select('*')
-      .order('sort_order', { ascending: true })
+    const { data, error } = await supabase.from('teams').select('*').order('slot_index')
     if (error) setError(error.message)
     setTeams(data || [])
     setLoading(false)
   }
-
   useEffect(() => { load() }, [])
 
-  async function addTeam() {
+  async function saveSlot(slot_index: number, member1: string, member2: string) {
     setSaving(true)
-    const nextOrder = (teams.at(-1)?.sort_order ?? -1) + 1
-    const { data, error } = await supabase.from('teams').insert({
-      member1: '',
-      member2: '',
-      sort_order: nextOrder
-    }).select().single()
-    if (error) setError(error.message)
-    if (data) setTeams([...teams, data as Team])
-    setSaving(false)
-  }
-
-  async function deleteTeam(id: string) {
-    setSaving(true)
-    const { error } = await supabase.from('teams').delete().eq('id', id)
-    if (error) setError(error.message)
-    setTeams(teams.filter(t => t.id !== id))
-    setSaving(false)
-  }
-
-  async function updateTeam(updated: Team) {
-    setSaving(true)
-    const { data, error } = await supabase.from('teams')
-      .update({ member1: updated.member1, member2: updated.member2 })
-      .eq('id', updated.id)
-      .select().single()
-    if (error) setError(error.message)
-    if (data) setTeams(teams.map(t => t.id === updated.id ? data as Team : t))
-    setSaving(false)
-  }
-
-  async function persistOrder(newOrder: Team[]) {
-    setSaving(true)
-    // Batch update: run sequentially to keep it simple
-    for (let i = 0; i < newOrder.length; i++) {
-      const t = newOrder[i]
-      const { error } = await supabase.from('teams')
-        .update({ sort_order: i })
-        .eq('id', t.id)
-      if (error) {
-        setError(error.message)
-        break
-      }
+    const existing = bySlot[slot_index]
+    if (existing) {
+      const { data, error } = await supabase
+        .from('teams')
+        .update({ member1, member2 })
+        .eq('id', existing.id)
+        .select()
+        .single()
+      if (!error && data) setTeams(prev => prev.map(t => t.id === existing.id ? data as Team : t))
+    } else {
+      const { data, error } = await supabase
+        .from('teams')
+        .insert({ member1, member2, slot_index })
+        .select()
+        .single()
+      if (!error && data) setTeams(prev => [...prev, data as Team])
     }
     setSaving(false)
   }
 
-  function handleDragEnd(event: any) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = teams.findIndex(t => t.id === active.id)
-    const newIndex = teams.findIndex(t => t.id === over.id)
-    const reordered = arrayMove(teams, oldIndex, newIndex).map((t, i) => ({ ...t, sort_order: i }))
-    setTeams(reordered)
-    persistOrder(reordered)
+  async function clearSlot(slot_index: number) {
+    const existing = bySlot[slot_index]
+    if (!existing) return
+    setSaving(true)
+    await supabase.from('teams').delete().eq('id', existing.id)
+    setTeams(prev => prev.filter(t => t.id !== existing.id))
+    setSaving(false)
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-4xl px-4 py-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-slate-800">Barvagt Planlægger</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-          >
-            Genindlæs
-          </button>
-          <button
-            onClick={addTeam}
-            className="rounded-xl bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700"
-          >
-            + Tilføj team
-          </button>
-        </div>
+        <button onClick={load} className="rounded-xl border px-3 py-2 text-sm">
+          Genindlæs
+        </button>
       </header>
-
-      <p className="mb-4 text-slate-600">
-        Hvert team består af to personer og dækker <strong>1 time</strong>. Træk i ☰ for at ændre rækkefølgen.
-      </p>
-
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          Fejl: {error}
-        </div>
-      )}
 
       {loading ? (
         <div>Indlæser…</div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={teams.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            <div className="grid gap-3">
-              {teams.map((t) => (
-                <SortableItem key={t.id} id={t.id}>
-                  {(dragHandleProps: any) => (
-                    <TeamCard
-                      team={t}
-                      onChange={updateTeam}
-                      onDelete={deleteTeam}
-                      dragHandleProps={dragHandleProps}
-                    />
-                  )}
-                </SortableItem>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: SLOT_COUNT }).map((_, idx) => {
+            const t = bySlot[idx]
+            return (
+              <SlotCard
+                key={idx}
+                label={slotLabel(idx)}
+                member1={t?.member1 || ''}
+                member2={t?.member2 || ''}
+                onSave={(m1, m2) => saveSlot(idx, m1, m2)}
+                onClear={() => clearSlot(idx)}
+                saving={saving}
+              />
+            )
+          })}
+        </div>
       )}
-
-      <footer className="mt-8 text-sm text-slate-500">
-        {saving ? 'Gemmer…' : 'Klar'} • Data persisteres i Supabase (gratis plan).
-      </footer>
     </div>
   )
 }
