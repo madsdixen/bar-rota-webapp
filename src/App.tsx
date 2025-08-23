@@ -37,29 +37,43 @@ export default function App() {
   useEffect(() => { load() }, [])
 
   async function saveSlot(slot_index: number, member1: string, member2: string) {
-    setSaving(true)
-    setError(null)
-    const existing = bySlot[slot_index]
+  setSaving(true)
+  setError(null)
+  const existing = bySlot[slot_index]
+
+  // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
+  if (!member1.trim() && !member2.trim()) {
     if (existing) {
-      const { data, error } = await supabase
-        .from('teams')
-        .update({ member1, member2 })
-        .eq('id', existing.id)
-        .select()
-        .single()
+      const { error } = await supabase.from('teams').delete().eq('id', existing.id)
       if (error) setError(error.message)
-      if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as Team : t))
-    } else {
-      const { data, error } = await supabase
-        .from('teams')
-        .insert({ member1, member2, slot_index })
-        .select()
-        .single()
-      if (error) setError(error.message)
-      if (data) setTeams(prev => [...prev, data as Team])
+      setTeams(prev => prev.filter(t => t.id !== existing.id))
     }
     setSaving(false)
+    return
   }
+
+  // Ellers gem/indsæt normalt
+  if (existing) {
+    const { data, error } = await supabase
+      .from('teams')
+      .update({ member1, member2 })
+      .eq('id', existing.id)
+      .select()
+      .single()
+    if (error) setError(error.message)
+    if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
+  } else {
+    const { data, error } = await supabase
+      .from('teams')
+      .insert({ member1, member2, slot_index })
+      .select()
+      .single()
+    if (error) setError(error.message)
+    if (data) setTeams(prev => [...prev, data as any])
+  }
+
+  setSaving(false)
+}
 
   async function clearSlot(slot_index: number) {
     const existing = bySlot[slot_index]

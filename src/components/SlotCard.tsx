@@ -34,12 +34,17 @@ export default function SlotCard({ label, member1, member2, onSave, onClear, sav
           {label}
         </span>
         <button
-          onClick={onClear}
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-          disabled={isEmpty || saving}
-        >
-          Ryd
-        </button>
+  onClick={() => {
+    // Nulstil lokal state straks, så autosave ikke re-indsætter
+    setM1('')
+    setM2('')
+    onClear()
+  }}
+  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+  disabled={isEmpty || saving}
+>
+  Ryd
+</button>
       </div>
 
       <div className="flex items-center gap-2">
