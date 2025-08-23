@@ -14,7 +14,8 @@ function slotLabel(idx: number) {
 export default function App() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  // Remove global saving, use per-slot saving state
+  const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
   const bySlot = useMemo(() => {
@@ -36,53 +37,74 @@ export default function App() {
   }
   useEffect(() => { load() }, [])
 
+  // Helper to set per-slot saving state
+  function setSlotSaving(slot: number, on: boolean) {
+    setSavingSlots(prev => {
+      const next = new Set(prev)
+      if (on) next.add(slot)
+      else next.delete(slot)
+      return next
+    })
+  }
+
   async function saveSlot(slot_index: number, member1: string, member2: string) {
-  setSaving(true)
-  setError(null)
-  const existing = bySlot[slot_index]
+    setSlotSaving(slot_index, true)
+    setError(null)
+    const existing = bySlot[slot_index]
 
-  // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
-  if (!member1.trim() && !member2.trim()) {
-    if (existing) {
-      const { error } = await supabase.from('teams').delete().eq('id', existing.id)
-      if (error) setError(error.message)
-      setTeams(prev => prev.filter(t => t.id !== existing.id))
+    // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
+    if (!member1.trim() && !member2.trim()) {
+      if (existing) {
+        // Optimistically update teams before await
+        setTeams(prev => prev.filter(t => t.id !== existing.id))
+        const { error } = await supabase.from('teams').delete().eq('id', existing.id)
+        if (error) setError(error.message)
+      }
+      setSlotSaving(slot_index, false)
+      return
     }
-    setSaving(false)
-    return
-  }
 
-  // Ellers gem/indsæt normalt
-  if (existing) {
-    const { data, error } = await supabase
-      .from('teams')
-      .update({ member1, member2 })
-      .eq('id', existing.id)
-      .select()
-      .single()
-    if (error) setError(error.message)
-    if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
-  } else {
-    const { data, error } = await supabase
-      .from('teams')
-      .insert({ member1, member2, slot_index })
-      .select()
-      .single()
-    if (error) setError(error.message)
-    if (data) setTeams(prev => [...prev, data as any])
-  }
+    // Ellers gem/indsæt normalt
+    if (existing) {
+      // Optimistically update teams before await
+      setTeams(prev => prev.map(t =>
+        t.id === existing.id ? { ...t, member1, member2 } : t
+      ))
+      const { data, error } = await supabase
+        .from('teams')
+        .update({ member1, member2 })
+        .eq('id', existing.id)
+        .select()
+        .single()
+      if (error) setError(error.message)
+      if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
+    } else {
+      // Optimistically add to teams before await (with a temporary id)
+      const tempId = 'temp-' + slot_index + '-' + Math.random()
+      setTeams(prev => [...prev, { id: tempId, slot_index, member1, member2 } as any])
+      const { data, error } = await supabase
+        .from('teams')
+        .insert({ member1, member2, slot_index })
+        .select()
+        .single()
+      if (error) setError(error.message)
+      if (data) {
+        setTeams(prev => [
+          ...prev.filter(t => !(t.id === tempId)),
+          data as any
+        ])
+      } else {
+        // Remove temp if error
+        setTeams(prev => prev.filter(t => t.id !== tempId))
+      }
+    }
 
-  setSaving(false)
-}
+    setSlotSaving(slot_index, false)
+  }
 
   async function clearSlot(slot_index: number) {
-    const existing = bySlot[slot_index]
-    if (!existing) return
-    setSaving(true)
-    const { error } = await supabase.from('teams').delete().eq('id', existing.id)
-    if (error) setError(error.message)
-    setTeams(prev => prev.filter(t => t.id !== existing.id))
-    setSaving(false)
+    // Just call saveSlot with empty members
+    await saveSlot(slot_index, '', '')
   }
 
   return (
@@ -101,7 +123,7 @@ export default function App() {
             >
               Genindlæs
             </button>
-            <span className="text-slate-500">{saving ? 'Gemmer…' : 'Klar'}</span>
+            <span className="text-slate-500">{savingSlots.size ? 'Gemmer…' : 'Klar'}</span>
           </div>
         </div>
       </header>
@@ -133,7 +155,7 @@ export default function App() {
                   member2={t?.member2 || ''}
                   onSave={(m1, m2) => saveSlot(idx, m1, m2)}
                   onClear={() => clearSlot(idx)}
-                  saving={saving}
+                  saving={savingSlots.has(idx)}
                 />
               )
             })}
