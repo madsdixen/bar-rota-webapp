@@ -53,14 +53,16 @@ export default function App() {
     setError(null)
     const existing = bySlot[slot_index]
 
-    // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
+    // 🚫 Hvis begge felter er tomme: gem som "tomt" ved at fjerne posten for slot'et
     if (!member1.trim() && !member2.trim()) {
-      if (existing) {
-        setTeams(prev => prev.filter(t => t.id !== existing.id))
-        const { error } = await supabase.from('teams').delete().eq('id', existing.id)
-        if (error) setError(error.message)
-        else setLastSavedAt(new Date().toLocaleTimeString())
-      }
+      // Optimistisk: fjern alle med slot_index fra lokal state
+      setTeams(prev => prev.filter(t => t.slot_index !== slot_index))
+      const { error } = await supabase
+        .from('teams')
+        .delete()
+        .eq('slot_index', slot_index)
+      if (error) setError(error.message)
+      else setLastSavedAt(new Date().toLocaleTimeString())
       setSlotSaving(slot_index, false)
       return
     }
