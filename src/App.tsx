@@ -1,165 +1,90 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { supabase } from './lib/supabaseClient'
-import type { Team } from './types'
-import SlotCard from './components/SlotCard'
+import React, { useEffect, useState } from 'react'
 
-const SLOT_COUNT = 12 // 16:00 .. 03:00
-
-function slotLabel(idx: number) {
-  const hour = (16 + idx) % 24
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${pad(hour)}:00 – ${pad((hour + 1) % 24)}:00`
+type Props = {
+  label: string
+  member1: string
+  member2: string
+  onSave: (member1: string, member2: string) => void
+  saving?: boolean
 }
 
-export default function App() {
-  const [teams, setTeams] = useState<Team[]>([])
-  const [loading, setLoading] = useState(true)
-  // Remove global saving, use per-slot saving state
-  const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
-  const [error, setError] = useState<string | null>(null)
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
+export default function SlotCard({ label, member1, member2, onSave, saving }: Props) {
+  const [m1, setM1] = useState(member1)
+  const [m2, setM2] = useState(member2)
 
-  const bySlot = useMemo(() => {
-    const map: Record<number, Team | undefined> = {}
-    for (const t of teams) map[t.slot_index] = t
-    return map
-  }, [teams])
+  // Er der gemte data i dette slot? (baseret på props = senest gemte)
+  const hasSavedData = Boolean(member1?.trim() || member2?.trim())
+  // Er der ændringer i forhold til gemt tilstand?
+  const isDirty = m1 !== member1 || m2 !== member2
+  // Gem-knap skal også virke når man har tømt felterne (=> sletning i DB)
+  const canSave = isDirty // uanset om tom eller ej
 
-  async function load() {
-    setLoading(true)
-    setError(null)
-    const { data, error } = await supabase
-      .from('teams')
-      .select('*')
-      .order('slot_index', { ascending: true })
-    if (error) setError(error.message)
-    setTeams(data || [])
-    setLoading(false)
-  }
-  useEffect(() => { load() }, [])
+  // Sync fra props når parent opdaterer (efter gem/slet)
+  useEffect(() => {
+    setM1(member1)
+    setM2(member2)
+  }, [member1, member2])
 
-  // Helper to set per-slot saving state
-  function setSlotSaving(slot: number, on: boolean) {
-    setSavingSlots(prev => {
-      const next = new Set(prev)
-      if (on) next.add(slot)
-      else next.delete(slot)
-      return next
-    })
+  const handleSave = () => {
+    if (!canSave) return
+    onSave(m1.trim(), m2.trim()) // tomt => App.tsx sletter i DB
   }
 
-  async function saveSlot(slot_index: number, member1: string, member2: string) {
-    setSlotSaving(slot_index, true)
-    setError(null)
-    const existing = bySlot[slot_index]
+  const cardClass = [
+    'rounded-2xl p-4 shadow-sm transition bg-white',
+    hasSavedData && !isDirty ? 'border-2 border-green-500' : 'border border-slate-200 hover:shadow-md',
+  ].join(' ')
 
-    // 🚫 Hvis begge felter er tomme: gem som "tomt" ved at fjerne posten for slot'et
-    if (!member1.trim() && !member2.trim()) {
-      // Optimistisk: fjern alle med slot_index fra lokal state
-      setTeams(prev => prev.filter(t => t.slot_index !== slot_index))
-      const { error } = await supabase
-        .from('teams')
-        .delete()
-        .eq('slot_index', slot_index)
-      if (error) setError(error.message)
-      else setLastSavedAt(new Date().toLocaleTimeString())
-      setSlotSaving(slot_index, false)
-      return
-    }
-
-    // Ellers gem/indsæt normalt
-    if (existing) {
-      setTeams(prev => prev.map(t =>
-        t.id === existing.id ? { ...t, member1, member2 } : t
-      ))
-      const { data, error } = await supabase
-        .from('teams')
-        .update({ member1, member2 })
-        .eq('id', existing.id)
-        .select()
-        .single()
-      if (error) setError(error.message)
-      else setLastSavedAt(new Date().toLocaleTimeString())
-      if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
-    } else {
-      const { data, error } = await supabase
-        .from('teams')
-        .upsert({ member1, member2, slot_index })
-        .select()
-        .single()
-      if (error) setError(error.message)
-      else setLastSavedAt(new Date().toLocaleTimeString())
-      if (data) {
-        setTeams(prev => [
-          // fjern evt. gammel post for samme slot (inkl. evt. stale state)
-          ...prev.filter(t => t.slot_index !== slot_index),
-          data as any
-        ])
-      }
-    }
-
-    setSlotSaving(slot_index, false)
-  }
-
+  const inputClass = [
+    'w-full rounded-xl border px-3 py-2 outline-none',
+    'bg-white focus:ring-2',
+    'border-slate-300 focus:ring-sky-400',
+  ].join(' ')
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-indigo-50/40 to-sky-50">
-      {/* Sticky header */}
-      <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-sky-600/90"></div>
-            <h1 className="text-lg font-semibold text-slate-800">Barvagt Planlægger til Mejlgade Kollektivet</h1>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              onClick={load}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 hover:bg-slate-50"
-            >
-              Genindlæs
-            </button>
-            <span className="text-slate-500">{savingSlots.size ? 'Gemmer…' : 'Klar'}</span>
-          </div>
+    <div className={cardClass}>
+      <div className="mb-4 flex items-center justify-between">
+        <span className="inline-flex items-center rounded-lg bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
+          {label}
+        </span>
+
+        {/* Gem: vises kun når der er ændringer (også når felter er tømt) */}
+        {canSave && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+          >
+            Gem
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <label className="text-xs font-medium text-slate-600">Bartender 1</label>
+          <input
+            className={inputClass}
+            placeholder="Navn på Bartender 1"
+            value={m1}
+            onChange={(e) => setM1(e.target.value)}
+          />
         </div>
-      </header>
 
-      {/* Content */}
-      <main className="mx-auto max-w-2xl px-4 py-6">
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            Fejl: {error}
-          </div>
-        )}
+        <span className="mt-6 text-slate-500">&</span>
 
-        {loading ? (
-          <div>Indlæser…</div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {Array.from({ length: SLOT_COUNT }).map((_, idx) => {
-              const t = bySlot[idx]
-              return (
-                <SlotCard
-                  key={idx}
-                  label={slotLabel(idx)}
-                  member1={t?.member1 || ''}
-                  member2={t?.member2 || ''}
-                  onSave={(m1, m2) => saveSlot(idx, m1, m2)}
-                  saving={savingSlots.has(idx)}
-                />
-              )
-            })}
-          </div>
-        )}
+        <div className="flex-1">
+          <label className="text-xs font-medium text-slate-600">Bartender 2</label>
+          <input
+            className={inputClass}
+            placeholder="Navn på Bartender 2"
+            value={m2}
+            onChange={(e) => setM2(e.target.value)}
+          />
+        </div>
+      </div>
 
-        <footer className="mt-10 border-t border-slate-200/80 bg-white/70 backdrop-blur">
-          <div className="mx-auto max-w-2xl px-4 py-4 text-xs text-slate-600 flex items-center justify-between">
-            <span>
-              {savingSlots.size ? 'Gemmer ændringer…' : (lastSavedAt ? `Sidst gemt kl. ${lastSavedAt}` : 'Klar')}
-            </span>
-            <span className="hidden sm:inline">Supabase (gratis) · GitHub Pages</span>
-          </div>
-        </footer>
-      </main>
+      {saving && <div className="mt-3 text-xs text-slate-500">Gemmer…</div>}
     </div>
   )
 }
