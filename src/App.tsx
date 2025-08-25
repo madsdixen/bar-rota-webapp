@@ -80,34 +80,25 @@ export default function App() {
       else setLastSavedAt(new Date().toLocaleTimeString())
       if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
     } else {
-      const tempId = 'temp-' + slot_index + '-' + Math.random()
-      setTeams(prev => [...prev, { id: tempId, slot_index, member1, member2 } as any])
       const { data, error } = await supabase
         .from('teams')
-        .insert({ member1, member2, slot_index })
+        .upsert({ member1, member2, slot_index })
         .select()
         .single()
-      if (error) {
-        setError(error.message)
-        setTeams(prev => prev.filter(t => t.id !== tempId))
-      } else {
-        setLastSavedAt(new Date().toLocaleTimeString())
-        if (data) {
-          setTeams(prev => [
-            ...prev.filter(t => !(t.id === tempId)),
-            data as any
-          ])
-        }
+      if (error) setError(error.message)
+      else setLastSavedAt(new Date().toLocaleTimeString())
+      if (data) {
+        setTeams(prev => [
+          // fjern evt. gammel post for samme slot (inkl. evt. stale state)
+          ...prev.filter(t => t.slot_index !== slot_index),
+          data as any
+        ])
       }
     }
 
     setSlotSaving(slot_index, false)
   }
 
-  async function clearSlot(slot_index: number) {
-    // Just call saveSlot with empty members
-    await saveSlot(slot_index, '', '')
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-indigo-50/40 to-sky-50">
@@ -132,11 +123,6 @@ export default function App() {
 
       {/* Content */}
       <main className="mx-auto max-w-2xl px-4 py-6">
-        <p className="mb-5 text-slate-600">
-  Her kan du planlægge barvagter. Hvert timeslot dækkes af to bartendere.  
-  Klik "Redigér" for at indsætte navne, og husk at trykke "Gem".  
-</p>
-
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             Fejl: {error}
@@ -156,7 +142,6 @@ export default function App() {
                   member1={t?.member1 || ''}
                   member2={t?.member2 || ''}
                   onSave={(m1, m2) => saveSlot(idx, m1, m2)}
-                  onClear={() => clearSlot(idx)}
                   saving={savingSlots.has(idx)}
                 />
               )
