@@ -84,7 +84,7 @@ export default function App() {
   return (
   <div
     className="min-h-screen bg-cover bg-center relative"
-    style={{ backgroundImage: "url('/bg.jpg')" }}
+    style={{ backgroundImage: "url('/bg.jpeg')" }}
   >
     {/* Lys overlay for bedre læsbarhed */}
     <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
