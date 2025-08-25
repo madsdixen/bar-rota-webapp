@@ -31,7 +31,7 @@ export default function SlotCard({
   }, [savedMember1, savedMember2])
 
   const handleSave = () => {
-    // Må også gemme når felter er tomme (=> opdateres i DB som tomt)
+    // Også gem når felter er tomme (=> opdateres til '' i DB)
     onSave(m1, m2)
   }
 

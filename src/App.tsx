@@ -48,8 +48,8 @@ export default function App() {
     })
   }
 
-  // Gemmer ALTID med upsert — også når felterne er tomme.
-  // Tomt => gemmes som tomme strenge i DB, så reload viser fortsat tomt.
+  // Gem ALTID via upsert – også når felterne er tomme.
+  // Tomt => gemmes som '' i DB, så reload ikke bringer gamle navne tilbage.
   async function saveSlot(slot_index: number, member1: string, member2: string) {
     setSlotSaving(slot_index, true)
     setError(null)
@@ -59,7 +59,10 @@ export default function App() {
 
     const { data, error } = await supabase
       .from('teams')
-      .upsert({ slot_index, member1: m1, member2: m2 })
+      .upsert(
+        { slot_index, member1: m1, member2: m2 },
+        { onConflict: 'slot_index' } // <- VIGTIGT: peg på unik kolonne
+      )
       .select()
       .single()
 
@@ -68,7 +71,6 @@ export default function App() {
     } else {
       setLastSavedAt(new Date().toLocaleTimeString())
       if (data) {
-        // Erstat altid posten for dette slot med den vi lige fik retur
         setTeams(prev => [
           ...prev.filter(t => t.slot_index !== slot_index),
           data as any,
