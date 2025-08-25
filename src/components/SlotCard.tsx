@@ -8,42 +8,40 @@ type Props = {
   saving?: boolean
 }
 
-export default function SlotCard({ label, member1, member2, onSave, saving }: Props) {
-  const [m1, setM1] = useState(member1)
-  const [m2, setM2] = useState(member2)
+export default function SlotCard({
+  label,
+  member1: savedMember1,
+  member2: savedMember2,
+  onSave,
+  saving,
+}: Props) {
+  const [m1, setM1] = useState(savedMember1)
+  const [m2, setM2] = useState(savedMember2)
 
-  // Er der gemte data i dette slot? (baseret på props = senest gemte)
-  const hasSavedData = Boolean(member1?.trim() || member2?.trim())
-  // Er der ændringer i forhold til gemt tilstand?
-  const isDirty = m1 !== member1 || m2 !== member2
-  // Gem-knap skal også virke når man har tømt felterne (=> sletning i DB)
-  const canSave = isDirty
+  // Dirty = lokale ændringer ift. senest gemte props
+  const isDirty = m1 !== savedMember1 || m2 !== savedMember2
 
-  // Sync fra props kun når der IKKE er igangværende ændringer
+  // Grøn ramme KUN hvis de gemte (props) indeholder tekst
+  const hasSavedText = Boolean(savedMember1?.trim() || savedMember2?.trim())
+
+  // Sync lokale felter når props ændres (efter vellykket gem / reload)
   useEffect(() => {
-    if (!isDirty) {
-      setM1(member1)
-      setM2(member2)
-    }
-  }, [member1, member2]) // bevidst ikke inkluderet isDirty i deps
+    setM1(savedMember1)
+    setM2(savedMember2)
+  }, [savedMember1, savedMember2])
 
   const handleSave = () => {
-    if (!canSave) return
-    onSave(m1.trim(), m2.trim()) // tomt => App.tsx sletter i DB
+    // Må også gemme når felter er tomme (=> opdateres i DB som tomt)
+    onSave(m1, m2)
   }
 
   const cardClass = [
-    "rounded-2xl p-4 shadow-sm transition",
-    "bg-white",
-    // Grøn, tyk ramme når der ER gemte data og ingen pending ændringer
-    hasSavedData && !isDirty ? "border-2 border-green-500" : "border border-slate-200 hover:shadow-md"
-  ].join(" ")
+    'rounded-2xl p-4 shadow-sm transition bg-white',
+    hasSavedText ? 'border-2 border-green-500' : 'border border-slate-200 hover:shadow-md',
+  ].join(' ')
 
-  const inputClass = [
-    "w-full rounded-xl border px-3 py-2 outline-none",
-    "bg-white focus:ring-2",
-    "border-slate-300 focus:ring-sky-400"
-  ].join(" ")
+  const inputClass =
+    'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-sky-400'
 
   return (
     <div className={cardClass}>
@@ -52,14 +50,14 @@ export default function SlotCard({ label, member1, member2, onSave, saving }: Pr
           {label}
         </span>
 
-        {/* Gem: vises kun når der er ændringer (også når felter er tømt) */}
-        {canSave && (
+        {/* Gem: vises kun ved ændringer (også når felter er tømt) */}
+        {isDirty && (
           <button
             onClick={handleSave}
             disabled={saving}
             className="rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
           >
-            Gem
+            {saving ? 'Gemmer…' : 'Gem'}
           </button>
         )}
       </div>
@@ -88,7 +86,9 @@ export default function SlotCard({ label, member1, member2, onSave, saving }: Pr
         </div>
       </div>
 
-      {saving && <div className="mt-3 text-xs text-slate-500">Gemmer…</div>}
+      {saving && !isDirty && (
+        <div className="mt-3 text-xs text-slate-500">Gemmer…</div>
+      )}
     </div>
   )
 }

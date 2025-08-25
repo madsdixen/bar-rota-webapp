@@ -14,7 +14,6 @@ function slotLabel(idx: number) {
 export default function App() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
-  // Remove global saving, use per-slot saving state
   const [savingSlots, setSavingSlots] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
@@ -36,77 +35,48 @@ export default function App() {
     setTeams(data || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
 
-  // Helper to set per-slot saving state
+  useEffect(() => {
+    load()
+  }, [])
+
   function setSlotSaving(slot: number, on: boolean) {
     setSavingSlots(prev => {
       const next = new Set(prev)
-      if (on) next.add(slot)
-      else next.delete(slot)
+      on ? next.add(slot) : next.delete(slot)
       return next
     })
   }
 
+  // Gemmer ALTID med upsert — også når felterne er tomme.
+  // Tomt => gemmes som tomme strenge i DB, så reload viser fortsat tomt.
   async function saveSlot(slot_index: number, member1: string, member2: string) {
     setSlotSaving(slot_index, true)
     setError(null)
-    const existing = bySlot[slot_index]
 
-    // 🚫 Hvis begge felter er tomme: betragt det som "slet slot"
-    if (!member1.trim() && !member2.trim()) {
-      if (existing) {
-        setTeams(prev => prev.filter(t => t.id !== existing.id))
-        const { error } = await supabase.from('teams').delete().eq('id', existing.id)
-        if (error) setError(error.message)
-        else setLastSavedAt(new Date().toLocaleTimeString())
-      }
-      setSlotSaving(slot_index, false)
-      return
-    }
+    const m1 = member1.trim()
+    const m2 = member2.trim()
 
-    // Ellers gem/indsæt normalt
-    if (existing) {
-      setTeams(prev => prev.map(t =>
-        t.id === existing.id ? { ...t, member1, member2 } : t
-      ))
-      const { data, error } = await supabase
-        .from('teams')
-        .update({ member1, member2 })
-        .eq('id', existing.id)
-        .select()
-        .single()
-      if (error) setError(error.message)
-      else setLastSavedAt(new Date().toLocaleTimeString())
-      if (data) setTeams(prev => prev.map(t => t.id === existing.id ? data as any : t))
+    const { data, error } = await supabase
+      .from('teams')
+      .upsert({ slot_index, member1: m1, member2: m2 })
+      .select()
+      .single()
+
+    if (error) {
+      setError(error.message)
     } else {
-      const tempId = 'temp-' + slot_index + '-' + Math.random()
-      setTeams(prev => [...prev, { id: tempId, slot_index, member1, member2 } as any])
-      const { data, error } = await supabase
-        .from('teams')
-        .insert({ member1, member2, slot_index })
-        .select()
-        .single()
-      if (error) {
-        setError(error.message)
-        setTeams(prev => prev.filter(t => t.id !== tempId))
-      } else {
-        setLastSavedAt(new Date().toLocaleTimeString())
-        if (data) {
-          setTeams(prev => [
-            ...prev.filter(t => !(t.id === tempId)),
-            data as any
-          ])
-        }
+      setLastSavedAt(new Date().toLocaleTimeString())
+      if (data) {
+        // Erstat altid posten for dette slot med den vi lige fik retur
+        setTeams(prev => [
+          ...prev.filter(t => t.slot_index !== slot_index),
+          data as any,
+        ].sort((a, b) => a.slot_index - b.slot_index))
       }
     }
 
     setSlotSaving(slot_index, false)
-  }
-
-  async function clearSlot(slot_index: number) {
-    // Just call saveSlot with empty members
-    await saveSlot(slot_index, '', '')
   }
 
   return (
@@ -116,7 +86,9 @@ export default function App() {
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-xl bg-sky-600/90"></div>
-            <h1 className="text-lg font-semibold text-slate-800">Barvagt Planlægger til Mejlgade Kollektivet</h1>
+            <h1 className="text-lg font-semibold text-slate-800">
+              Barvagt Planlægger
+            </h1>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <button
@@ -125,7 +97,9 @@ export default function App() {
             >
               Genindlæs
             </button>
-            <span className="text-slate-500">{savingSlots.size ? 'Gemmer…' : 'Klar'}</span>
+            <span className="text-slate-500">
+              {savingSlots.size ? 'Gemmer…' : 'Klar'}
+            </span>
           </div>
         </div>
       </header>
@@ -133,9 +107,9 @@ export default function App() {
       {/* Content */}
       <main className="mx-auto max-w-2xl px-4 py-6">
         <p className="mb-5 text-slate-600">
-  Her kan du planlægge barvagter. Hvert timeslot dækkes af to bartendere.  
-  Klik "Redigér" for at indsætte navne, og husk at trykke "Gem".  
-</p>
+          Hvert timeslot dækkes af to bartendere. Skriv navne og tryk <strong>Gem</strong>.
+          Felter forbliver tomme efter gem, også når siden genindlæses.
+        </p>
 
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -153,10 +127,9 @@ export default function App() {
                 <SlotCard
                   key={idx}
                   label={slotLabel(idx)}
-                  member1={t?.member1 || ''}
-                  member2={t?.member2 || ''}
+                  member1={t?.member1 ?? ''}
+                  member2={t?.member2 ?? ''}
                   onSave={(m1, m2) => saveSlot(idx, m1, m2)}
-                  onClear={() => clearSlot(idx)}
                   saving={savingSlots.has(idx)}
                 />
               )
@@ -167,7 +140,11 @@ export default function App() {
         <footer className="mt-10 border-t border-slate-200/80 bg-white/70 backdrop-blur">
           <div className="mx-auto max-w-2xl px-4 py-4 text-xs text-slate-600 flex items-center justify-between">
             <span>
-              {savingSlots.size ? 'Gemmer ændringer…' : (lastSavedAt ? `Sidst gemt kl. ${lastSavedAt}` : 'Klar')}
+              {savingSlots.size
+                ? 'Gemmer ændringer…'
+                : lastSavedAt
+                ? `Sidst gemt kl. ${lastSavedAt}`
+                : 'Klar'}
             </span>
             <span className="hidden sm:inline">Supabase (gratis) · GitHub Pages</span>
           </div>
