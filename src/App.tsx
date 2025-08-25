@@ -82,7 +82,15 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-indigo-50/40 to-sky-50">
+  <div
+    className="min-h-screen bg-cover bg-center relative"
+    style={{ backgroundImage: "url('/bg.jpg')" }}
+  >
+    {/* Lys overlay for bedre læsbarhed */}
+    <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
+
+    {/* Alt indhold skal ligge ovenpå overlay */}
+    <div className="relative">
       {/* Sticky header */}
       <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
@@ -109,8 +117,7 @@ export default function App() {
       {/* Content */}
       <main className="mx-auto max-w-2xl px-4 py-6">
         <p className="mb-5 text-slate-600">
-          Hvert timeslot dækkes af to bartendere. Skriv navne og tryk <strong>Gem</strong>.
-          Felter forbliver tomme efter gem, også når siden genindlæses.
+          Skriv jer på hvornår I vil stå i bar og tryk <strong>Gem</strong>!
         </p>
 
         {error && (
@@ -153,5 +160,6 @@ export default function App() {
         </footer>
       </main>
     </div>
-  )
+  </div>
+)
 }
